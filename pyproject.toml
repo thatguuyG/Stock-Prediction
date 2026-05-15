@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "stock-prediction"
 version = "0.1.0"
 description = "Algorithmic stock trading system — Phase 1: data ingestion, features, sentiment."
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 readme = "README.md"
 license = { text = "MIT" }
 dependencies = [
