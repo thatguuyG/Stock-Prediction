@@ -75,8 +75,10 @@ The `model` column on `sentiments` exists so future scorers (FinBERT, LLMs) can 
 
 ## CI
 
-Two workflows in `.github/workflows/`:
-- `pylint.yml` — runs `pylint` on every push, matrix Python 3.11/3.12
-- `test.yml` — runs `pytest` on push and PR, matrix Python 3.11/3.12
+One workflow at `.github/workflows/ci.yml` with two parallel jobs:
+- `lint` — `pylint` on all tracked Python (excluding `migrations/`)
+- `test` — `pytest -q`
+
+Both run on push and PR, both on Python 3.12. Python 3.12+ is required because the only available `pandas-ta` releases on PyPI require it.
 
 Both install `pip install -e ".[dev]"` first; do not assume pip-installable packages without updating `pyproject.toml`.

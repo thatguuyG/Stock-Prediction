@@ -44,8 +44,7 @@ stockpred score-sentiment
 
 ## CI
 
-- [.github/workflows/pylint.yml](.github/workflows/pylint.yml) — lints all Python on push
-- [.github/workflows/test.yml](.github/workflows/test.yml) — runs pytest on push and PR
+[.github/workflows/ci.yml](.github/workflows/ci.yml) runs pylint and pytest in parallel jobs on push and PR.
 
 ## License
 
