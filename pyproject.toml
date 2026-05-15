@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stock-prediction"
+version = "0.1.0"
+description = "Algorithmic stock trading system — Phase 1: data ingestion, features, sentiment."
+requires-python = ">=3.11"
+readme = "README.md"
+license = { text = "MIT" }
+dependencies = [
+    "yfinance>=0.2.40",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "pandas-ta>=0.3.14b0",
+    "SQLAlchemy>=2.0",
+    "psycopg[binary]>=3.1",
+    "alembic>=1.13",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "requests>=2.31",
+    "vaderSentiment>=3.3.2",
+    "typer>=0.12",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-postgresql>=6.0",
+    "responses>=0.25",
+    "freezegun>=1.5",
+    "pylint>=3.2",
+]
+
+[project.scripts]
+stockpred = "services.ingestion.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["services*", "packages*"]
+
+[tool.pylint.MASTER]
+ignore = ["migrations", ".venv", "build", "dist"]
+
+[tool.pylint."MESSAGES CONTROL"]
+disable = [
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "too-few-public-methods",
+    "import-error",
+    "duplicate-code",
+    # Pydantic Field() defaults confuse pylint's type inference.
+    "no-member",
+    # SQLAlchemy func.* dynamic dispatch.
+    "not-callable",
+    # Module-level cached singletons are intentionally mutable.
+    "invalid-name",
+    # pandas_ta is imported for the .ta DataFrame accessor side-effect.
+    "unused-import",
+    # Lazy imports inside upsert_ignore() are intentional (dialect-specific).
+    "import-outside-toplevel",
+]
+
+[tool.pylint.FORMAT]
+max-line-length = 110
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,14 +1,52 @@
-# Stock prediction in python
+# Stock-Prediction
 
-This is a stock prediction program in python using LTSM(Long Short-term Memory)
+Algorithmic stock-trading system, built in phases. **Phase 1 (current)** delivers the data foundation: daily OHLCV ingestion, technical indicators, news headlines, and per-headline sentiment — all persisted to Postgres. Phases 2–4 layer on a model, a signal engine, broker execution, and live deployment.
 
-Long short-term memory (LSTM) is an artificial recurrent neural network (RNN) architecture used in the
-field of deep learning. 
+For the full roadmap and architecture, see [docs/README.md](docs/README.md).
 
-LSTM is well suited for stock prediction due to its ability to store past information that is important,
-and forget the information that is not important.
+## Quickstart
 
-Description: This program uses an artificial recurrent neural network called Long Short Term Memory (LSTM) to predict the closing stock price of a corporation (Apple Inc.) using the past 60 day stock price.
+```bash
+# 1. Configure
+cp .env.example .env
+# fill in NEWSAPI_KEY (https://newsapi.org — free tier) and adjust WATCHLIST
 
-# Happy coding!
- 
+# 2. Start Postgres
+docker compose up -d postgres
+
+# 3. Install
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+
+# 4. Apply migrations
+alembic upgrade head
+
+# 5. Run the pipeline
+stockpred run-daily --since 2024-01-01
+```
+
+Individual steps:
+
+```bash
+stockpred ingest-prices --since 2024-01-01
+stockpred compute-features
+stockpred ingest-news
+stockpred score-sentiment
+```
+
+## Layout
+
+- [services/ingestion/](services/ingestion/) — Phase 1 pipeline (prices, features, news, sentiment, CLI)
+- [packages/shared/](packages/shared/) — config, DB, ORM models, logging used across services
+- [migrations/](migrations/) — Alembic schema migrations
+- [tests/](tests/) — pytest suite (SQLite in-memory; no external services required)
+- [docs/](docs/) — architecture, phase plans, ADRs
+
+## CI
+
+- [.github/workflows/pylint.yml](.github/workflows/pylint.yml) — lints all Python on push
+- [.github/workflows/test.yml](.github/workflows/test.yml) — runs pytest on push and PR
+
+## License
+
+MIT
