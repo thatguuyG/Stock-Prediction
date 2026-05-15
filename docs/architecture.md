@@ -30,20 +30,20 @@
                        │ probability scores
                        ▼
   ┌─────────────────────────────────────────┐
-  │ Signal engine                           │  ❌ Phase 3
+  │ Signal engine                           │  ✅ Phase 3
   │   model · indicator · sentiment · risk  │
   │   → buy / sell / hold + size            │
   └────────────────────┬────────────────────┘
                        │ orders
                        ▼
   ┌─────────────────────────────────────────┐
-  │ Broker adapter — Alpaca paper           │  ❌ Phase 3
+  │ Broker adapter — Alpaca paper           │  ✅ Phase 3
   │   submit · poll · reconcile             │
   └────────────────────┬────────────────────┘
                        │ fills, positions, P&L
                        ▼
   ┌─────────────────────────────────────────┐
-  │ Dashboard (Next.js / read-only first)   │  ❌ Phase 3+
+  │ Dashboard (Next.js / read-only first)   │  ❌ Phase 3.5
   │   positions · signals · sentiment feed  │
   └─────────────────────────────────────────┘
 ```
@@ -58,9 +58,9 @@
 | Storage | ✅ implemented | Postgres 16; 5-table schema; Alembic migrations |
 | Model training / inference | ✅ implemented | XGBoost baseline; `services/model/{train,predict}.py` |
 | Backtesting | ✅ implemented | Pure-pandas backtester ([ADR 0005](decisions/0005-pandas-backtester-over-backtrader.md)); `services/model/backtest.py` |
-| Signal engine | ❌ deferred → Phase 3 | Rules combining model + indicators + sentiment |
-| Broker execution | ❌ deferred → Phase 3 | Alpaca paper API |
-| Dashboard | ❌ deferred → Phase 3+ | Next.js or Nuxt, read-only first |
+| Signal engine | ✅ implemented | `services/signal/rules.py` + `runner.py`; rationale logged to `signals.rationale` JSON |
+| Broker execution | ✅ implemented | Thin Alpaca client (`services/broker/alpaca.py`); bracket orders; reconciliation loop |
+| Dashboard | ❌ deferred → [Phase 3.5](phase-3.5-dashboard.md) | Terminal `stockpred report` for now |
 | Live deployment | ❌ deferred → Phase 4 | GCP Cloud Run + Cloud Scheduler |
 | Monitoring / alerting | ❌ deferred → Phase 4 | TBD (likely GCP-native) |
 
@@ -103,9 +103,9 @@ Each later component depends only on the contract of the layer below it. Capturi
 ├── services/
 │   ├── ingestion/              ✅ Phase 1
 │   ├── model/                  ✅ Phase 2
-│   ├── signal/                 ❌ Phase 3
-│   ├── broker/                 ❌ Phase 3
-│   └── dashboard/              ❌ Phase 3+ (Next.js)
+│   ├── signal/                 ✅ Phase 3
+│   ├── broker/                 ✅ Phase 3
+│   └── dashboard/              ❌ Phase 3.5 (Next.js)
 ├── packages/shared/            — config, db, models, logging
 └── tests/
 ```
