@@ -8,12 +8,19 @@ import typer
 from packages.shared.config import get_settings
 from packages.shared.db import session_scope
 from packages.shared.logging import get_logger
+from services.broker import cli as broker_cli
 from services.ingestion import features, news, prices, sentiment
 from services.model import cli as model_cli
+from services.signal import cli as signal_cli
 
-app = typer.Typer(add_completion=False, help="Stock-Prediction CLI — Phase 1 ingestion + Phase 2 model.")
+app = typer.Typer(
+    add_completion=False,
+    help="Stock-Prediction CLI — Phase 1 ingestion + Phase 2 model + Phase 3 signal/broker.",
+)
 log = get_logger(__name__)
 model_cli.register(app)
+signal_cli.register(app)
+broker_cli.register(app)
 
 
 def _watchlist() -> list[str]:

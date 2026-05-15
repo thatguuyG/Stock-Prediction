@@ -13,6 +13,13 @@ class Settings(BaseSettings):
     watchlist_raw: str = Field(default="AAPL,MSFT,NVDA", alias="WATCHLIST")
     log_level: str = Field(default="INFO")
 
+    alpaca_key_id: str = Field(default="", alias="ALPACA_KEY_ID")
+    alpaca_secret_key: str = Field(default="", alias="ALPACA_SECRET_KEY")
+    alpaca_base_url: str = Field(
+        default="https://paper-api.alpaca.markets", alias="ALPACA_BASE_URL"
+    )
+    risk_halt: bool = Field(default=False, alias="RISK_HALT")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

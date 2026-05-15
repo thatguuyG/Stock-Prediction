@@ -24,6 +24,9 @@ The repo uses `pyproject.toml` (no Poetry). `uv venv .venv && uv pip install -e 
 | Train a model | `stockpred train --model-version v1 [--since 2020-01-01]` |
 | Batch inference | `stockpred predict --model-version v1` |
 | Run a backtest | `stockpred backtest --model-version v1 [--threshold 0.55]` |
+| Generate signals (paper trade) | `stockpred run-signals --model-version v1 [--dry-run]` |
+| Reconcile with Alpaca | `stockpred reconcile` |
+| Print terminal report | `stockpred report [--limit 50]` |
 | Start Postgres locally | `docker compose up -d postgres` |
 | Apply migrations | `alembic upgrade head` |
 | Generate a new migration | `alembic revision --autogenerate -m "describe change"` |
@@ -33,19 +36,20 @@ Tests use an in-memory SQLite (see [tests/conftest.py](tests/conftest.py)); they
 
 ## Architecture
 
-This is a **phase-based monorepo**. Phases 1 and 2 are implemented; Phases 3–4 are designed in `docs/` and exist only as written contracts.
+This is a **phase-based monorepo**. Phases 1, 2, and 3 are implemented; Phase 3.5 (dashboard) and Phase 4 (ops) are designed in `docs/` and exist only as written contracts.
 
 **Implemented:**
 - Phase 1 — data ingestion (`services/ingestion/`): prices, indicators, news, sentiment → Postgres.
 - Phase 2 — model (`services/model/`): XGBoost walk-forward CV → predictions table; pure-pandas backtester → `backtest_runs`.
+- Phase 3 — signal engine (`services/signal/`) + Alpaca paper broker (`services/broker/`): rule-based BUY/SELL/HOLD with JSON rationale audit; bracket orders; reconciliation loop; `RISK_HALT` kill switch.
 
-**Deferred:** Phase 3 (signal engine + Alpaca paper broker), Phase 4 (GCP deployment + monitoring + retraining).
+**Deferred:** Phase 3.5 (Next.js dashboard + FastAPI shim), Phase 4 (GCP deployment + monitoring + retraining).
 
 Always read [docs/architecture.md](docs/architecture.md) before adding a new component — it states which layers exist, the contracts between them, and which directory each future service will live in. [docs/decisions/](docs/decisions/) holds ADRs explaining the *why* of major choices.
 
 ### Layout
 
-- `services/<name>/` — deployable units. Today: `services/ingestion/` (Phase 1) and `services/model/` (Phase 2).
+- `services/<name>/` — deployable units. Today: `services/ingestion/` (Phase 1), `services/model/` (Phase 2), `services/signal/` + `services/broker/` (Phase 3).
 - `packages/shared/` — config (`pydantic-settings`), DB engine/session, ORM models, logging. **All services depend on this; nothing in `packages/shared/` should import from `services/`**.
 - `migrations/` — single Alembic history for the whole DB schema. One migration per logical change; never edit a migration after it lands on `main`.
 - `tests/` — flat layout, one test module per ingestion module.
@@ -59,7 +63,7 @@ Always read [docs/architecture.md](docs/architecture.md) before adding a new com
 
 3. **Dialect-agnostic upserts.** `upsert_ignore()` detects Postgres vs SQLite at runtime so the same code path serves production and tests. Don't import `sqlalchemy.dialects.postgresql.insert` directly in service code.
 
-4. **CLI is the only entrypoint.** `services/ingestion/cli.py` is the `typer` app installed as the `stockpred` console script. It mounts model commands via `services/model/cli.py:register(app)` at import time, so both Phase 1 (`ingest-prices`, …) and Phase 2 (`train`, `predict`, `backtest`) commands live on the same top-level CLI. There are no other entry points — no `__main__.py` modules with their own argparse, no notebooks committed to the repo.
+4. **CLI is the only entrypoint.** `services/ingestion/cli.py` is the `typer` app installed as the `stockpred` console script. It mounts subcommands from each service via `<service>/cli.py:register(app)` at import time, so Phase 1 (`ingest-prices`, …), Phase 2 (`train`, `predict`, `backtest`), and Phase 3 (`run-signals`, `reconcile`, `report`) commands all live on the same top-level CLI. There are no other entry points — no `__main__.py` modules with their own argparse, no notebooks committed to the repo.
 
 5. **pandas-ta column naming has churned across versions.** The `INDICATOR_COLUMNS` map in `services/ingestion/features.py` deliberately accepts both old (`BBL_20_2.0`) and new (`BBL_20_2.0_2.0`) Bollinger column names. If a future pandas-ta release renames again, extend the map rather than pinning a version. See [ADR 0002](docs/decisions/0002-pandas-ta-over-talib.md).
 
@@ -69,7 +73,7 @@ Always read [docs/architecture.md](docs/architecture.md) before adding a new com
 
 ### Database schema
 
-7 tables, defined in [packages/shared/models.py](packages/shared/models.py):
+12 tables, defined in [packages/shared/models.py](packages/shared/models.py):
 
 Phase 1 (migration `0001_initial.py`):
 - `tickers` — watchlist master
@@ -82,7 +86,14 @@ Phase 2 (migration `0002_model_tables.py`):
 - `predictions` — per `(symbol, ts, model_version)`, with `score` and `label_pred`
 - `backtest_runs` — one row per backtest invocation, with Sharpe / drawdown / hit rate / total return / turnover
 
-The `model` column on `sentiments` and the `model_version` column on `predictions` exist so multiple model variants (VADER vs FinBERT, v1 vs v2) coexist without overwriting.
+Phase 3 (migration `0003_execution_tables.py`):
+- `signals` — one row per `(symbol, ts, model_version)` with `decision` (BUY/SELL/HOLD) + JSON `rationale` audit trail
+- `orders` — local mirror of orders submitted to Alpaca; linked to `signals.id` and `broker_order_id`
+- `trades` — fills (possibly multiple per order on partial fills)
+- `positions` — current holdings, mirrored from Alpaca
+- `risk_state` — time series of equity / cash / exposure / drawdown / halted, written by `reconcile`
+
+The `model` column on `sentiments`, `model_version` column on `predictions`, and JSON `rationale` on `signals` all let variants coexist for A/B comparison without schema migrations.
 
 ### Phase 2 conventions
 
@@ -93,6 +104,18 @@ The `model` column on `sentiments` and the `model_version` column on `prediction
 10. **Walk-forward CV defaults to 252/63/63 trading days.** Smaller test datasets must pass explicit `train_window`/`val_window`/`step` overrides — see [tests/test_model_train.py](tests/test_model_train.py).
 
 11. **Synthetic-data testing for ML code.** Training/inference/backtest tests build a deterministic embedded-signal dataset directly in the SQLite test session — never call `yfinance` from a test. See [ADR 0006](docs/decisions/0006-walk-forward-cv-windows.md).
+
+### Phase 3 conventions
+
+12. **`signals` is append-only and audited.** Every decision (including HOLD) gets a row with a JSON `rationale` capturing every gate's input + pass/fail flag + a top-level `reason`. To investigate "why didn't we buy X on day Y?" the answer is `SELECT rationale FROM signals WHERE symbol = 'X' AND ts = 'Y'`. See [ADR 0009](docs/decisions/0009-signal-rationale-as-jsonb.md).
+
+13. **Reconcile is the only writer to `positions` and `risk_state`.** `run-signals` reads them but never writes. Keeps the two cron loops decoupled — a stalled reconcile can't corrupt the signal runner's view, just leave it stale.
+
+14. **No live Alpaca calls in tests.** Use `responses` ([test_broker_alpaca.py](tests/test_broker_alpaca.py)) or `unittest.mock.MagicMock` (for the reconciler). CI must never hit the real Alpaca API. See [ADR 0007](docs/decisions/0007-thin-alpaca-client-over-alpaca-py.md).
+
+15. **`RISK_HALT=1` is the kill switch.** `run-signals` checks it first and returns immediately. Reconcile still runs (we want continuing state tracking even while halted). Each `risk_state` row records the halt status at the time it was written.
+
+16. **CLI cron over in-process scheduler.** `run-signals` and `reconcile` exit when done; the host's crontab (or Cloud Scheduler, or GitHub Actions schedule) decides cadence. See [ADR 0008](docs/decisions/0008-cli-cron-over-long-lived-scheduler.md).
 
 ## CI
 

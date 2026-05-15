@@ -1,85 +1,156 @@
 # Phase 3 — Execution
 
-> **Status: DEFERRED — not yet implemented.**
-> This document captures the intended design. Treat code references as forward-looking; nothing here exists yet.
+> **Status: implemented (signal engine + broker).** The Next.js dashboard piece is deferred to [Phase 3.5](phase-3.5-dashboard.md). What's live today is the headless paper-trading loop: prediction → rules → bracket order → Alpaca → reconcile.
 
 ## Goal
 
-Turn model predictions into paper-traded orders against Alpaca, with explicit risk controls and a read-only dashboard for human oversight.
+Turn the Phase 2 `predictions` table into actual paper orders against Alpaca, with explicit risk controls and an audit trail.
 
-## Scope
+## What's in
 
-- Signal engine: combine model score, technical confirmation, sentiment gate, and risk thresholds.
-- Alpaca paper broker adapter: submit, poll, reconcile.
-- Position sizing + stop-loss / take-profit.
-- Read-only Next.js dashboard for positions, signals, recent fills.
+- Signal engine: pure-function decision logic ([services/signal/rules.py](../services/signal/rules.py)) consuming model score + indicators + sentiment + portfolio state.
+- Signal runner ([services/signal/runner.py](../services/signal/runner.py)): pulls latest predictions, applies rules, writes a row per decision to `signals` and an order per BUY/SELL to `orders`.
+- Thin Alpaca paper-trading client ([services/broker/alpaca.py](../services/broker/alpaca.py)) — no `alpaca-py` dependency; see [ADR 0007](decisions/0007-thin-alpaca-client-over-alpaca-py.md).
+- Bracket orders: 2% stop-loss / 4% take-profit attached at submission.
+- Reconciler ([services/broker/reconcile.py](../services/broker/reconcile.py)): pulls broker state, mirrors `orders` / `positions` / writes `risk_state`.
+- `RISK_HALT=1` kill switch: signal runner exits early without submitting orders.
+- Terminal report ([services/signal/cli.py](../services/signal/cli.py) `report` command): prints positions, recent signals, latest risk state.
 
-## New components
+## CLI
 
-```
-services/signal/
-├── rules.py            # decision logic
-└── runner.py           # cron entrypoint: pull latest predictions, emit orders
-
-services/broker/
-├── alpaca.py           # thin adapter around alpaca-py
-├── reconcile.py        # match local trade rows to broker fills
-└── runner.py           # cron entrypoint: sync positions
-
-services/dashboard/     # Next.js app
-├── pages/
-│   ├── index.tsx       # positions + P&L
-│   ├── signals.tsx     # recent buys/sells with rationale
-│   └── news.tsx        # latest headlines + sentiment
+```bash
+stockpred run-signals  --model-version v1                   # cron entry; emits orders
+stockpred run-signals  --model-version v1 --dry-run         # log decisions without hitting Alpaca
+stockpred reconcile                                          # cron entry; syncs broker state
+stockpred report       [--limit 50]                         # terminal summary
 ```
 
-New tables:
+Recommended cron:
+
+```
+# weekday market close + 30 min (16:30 ET → 21:30 UTC)
+30 21 * * 1-5  stockpred run-signals --model-version v1
+# every 5 min during US market hours
+*/5 14-21 * * 1-5  stockpred reconcile
+```
+
+## Decisions locked in
+
+| Decision | Value | Source |
+|---|---|---|
+| Scope this build | Signal + broker only | User-chosen; dashboard deferred |
+| Dashboard | Terminal CLI report | User-chosen; defers JS toolchain |
+| Alpaca client | Thin `requests`-based, ~150 lines we own | [ADR 0007](decisions/0007-thin-alpaca-client-over-alpaca-py.md) |
+| Scheduler | Host cron via CLI subcommands | [ADR 0008](decisions/0008-cli-cron-over-long-lived-scheduler.md) |
+| Signal audit trail | Every decision (incl. HOLD) → `signals` table with JSON `rationale` | [ADR 0009](decisions/0009-signal-rationale-as-jsonb.md) |
+| Long-only | Yes; SELL only triggers when already long + bearish score | Per docs/phase-3 |
+| Score threshold | `score > 0.55` for BUY, `score < 0.45` for SELL | Reuses Phase 2's `DEFAULT_THRESHOLD` |
+| Confirmation | `close > sma_50` (trend filter) | Per docs/phase-3 |
+| Sentiment gate | 7-day mean compound > -0.1 | Per docs/phase-3 |
+| Position sizing | 5% target per name | Per docs/phase-3 |
+| Concurrency cap | 20 open positions max | Per docs/phase-3 |
+| Exposure cap | 80% gross | Per docs/phase-3 |
+| Bracket | 2% stop-loss / 4% take-profit | Per docs/phase-3 |
+| Risk halt | `RISK_HALT=1` env var; checked at top of `run-signals` | Per docs/phase-3 |
+
+## Schema additions
+
+Migration [0003_model_tables.py](../migrations/versions/0003_execution_tables.py) adds five tables.
 
 ```sql
-orders   (id, symbol, side, qty, type, status, submitted_at, broker_order_id)
-trades   (id, order_id, ts, qty, price, fee)
-positions (symbol PK, qty, avg_price, updated_at)
-risk_state (id, ts, equity, max_drawdown, exposure_pct)
+signals (id, symbol, ts, model_version, score, decision, rationale JSON, created_at)
+  UNIQUE(symbol, ts, model_version)
+  INDEX(symbol, ts), INDEX(model_version), INDEX(decision)
+
+orders (id, symbol, side, qty, order_type,
+        limit_price, stop_price, take_profit,
+        status, submitted_at, filled_at, broker_order_id UNIQUE, signal_id)
+  INDEX(status), INDEX(symbol, submitted_at)
+
+trades (id, order_id, ts, qty, price, fee, broker_trade_id UNIQUE)
+  INDEX(order_id)
+
+positions (symbol PK, qty, avg_price, updated_at, source)
+
+risk_state (id, ts, equity, cash, exposure_pct,
+            max_drawdown, n_open_positions, halted, notes)
+  INDEX(ts DESC)
 ```
 
-## Signal rules (v1 sketch)
+`signals.rationale` records every gate's input value and pass/fail flag plus a top-level `reason` string. Queryable on Postgres via `->>` operators; on SQLite via JSON1.
 
-For each symbol with a fresh prediction:
+## Signal rule pipeline
 
-1. **Filter**: skip if average daily volume < threshold or spread > threshold.
-2. **Confirmation**: require model `score > 0.55` AND `close > sma_50` (long-only filter).
-3. **Sentiment gate**: 7-day mean compound > -0.1 (don't fight obviously bad news).
-4. **Sizing**: target 5% of equity per name; max 20 concurrent positions.
-5. **Risk**: bracket order with 2% stop-loss and 4% take-profit; reject if total exposure would exceed 80%.
+For each `(symbol, ts)` candidate:
 
-All rules are pure functions in `services/signal/rules.py` and exercised by deterministic unit tests.
+1. **Already long + bearish score** → `SELL` (exit).
+2. **Already long + neutral/bullish** → `HOLD` (don't double up).
+3. **Score ≤ threshold** → `HOLD`.
+4. **`close ≤ sma_50`** → `HOLD` (trend filter).
+5. **7-day sentiment ≤ floor** → `HOLD` (sentiment gate).
+6. **Open positions ≥ max** → `HOLD` (concurrency cap).
+7. **Exposure + target > cap** → `HOLD` (exposure cap).
+8. Else → `BUY` at `target_pct`.
 
-## Broker integration
+The rationale dict logged to `signals.rationale` records every gate's value and outcome — including the gates that weren't reached (so the audit trail tells you which decision short-circuited).
 
-[alpaca-py](https://github.com/alpacahq/alpaca-py) for the paper trading API. Two cron jobs:
+## Order submission
 
-- **signal-tick** (every market-open weekday, after `compute-features` completes): generate signals, emit bracketed orders.
-- **broker-tick** (every 5 min during market hours): poll Alpaca for fills, reconcile into `trades`/`positions`.
+1. Convert `target_pct` × latest `risk_state.equity` → notional → integer qty at current close.
+2. Insert `orders` row with `status="pending"`, `signal_id` link.
+3. Submit bracket order to Alpaca (`order_class=bracket`, market entry, 2% stop, 4% take).
+4. Store `broker_order_id` + Alpaca's returned status. If Alpaca rejects: `status="rejected"`, error logged.
+5. If `alpaca=None` (CLI `--dry-run` or no API keys): mark `status="dry_run"` and skip submission. **No orders ever silently ship without keys.**
 
-The two never share state in-process — they communicate only through the database. This makes either side individually restartable.
+## Reconciliation
 
-## Dashboard
+Always-on background loop (cron every 5 min during market hours):
 
-Next.js read-only first. Talks to a FastAPI shim (`services/api/`, also Phase 3) that exposes:
+1. For each non-terminal order with a `broker_order_id`, GET `/v2/orders/{id}` and update `status` / `filled_at`.
+2. For any partial or full fill, insert a `trades` row representing the *delta* since the previous reconcile.
+3. GET `/v2/positions`, upsert into `positions` (source = `alpaca`). Anything we tracked that the broker no longer holds → zero out.
+4. GET `/v2/account`, compute exposure, append a new `risk_state` row.
 
-- `GET /positions` — current portfolio.
-- `GET /signals?limit=50` — recent decisions with the rule trace that justified them.
-- `GET /equity-curve?from=...&to=...` — for charting.
+Reconciler is the **only** writer to `positions` and `risk_state`. Signal runner only reads them — keeps the two crons decoupled.
 
-No write endpoints in Phase 3 — order submission stays inside cron jobs. Manual overrides are a Phase 4 question.
+## Risk halt
 
-## Acceptance criteria
+Set `RISK_HALT=1` in environment. Next `run-signals` invocation:
+- Logs a warning.
+- Returns immediately with `halted=True`.
+- Writes zero rows to `signals` or `orders`.
 
-- After 1 week of paper trading: orders flowing, no duplicate submissions on cron restart, positions reconcile within 5 min of fill.
-- Dashboard renders current positions and last 50 signals in under 1s on a fresh load.
-- Kill switch: `RISK_HALT=1` env var stops new order submission without crashing the cron job.
+Reconciler still runs unchanged — `halted` is recorded on the resulting `risk_state` row for audit.
+
+## Tests
+
+| File | Coverage |
+|---|---|
+| [tests/test_signal_rules.py](../tests/test_signal_rules.py) | Every rule branch: low score → HOLD, all gates pass → BUY, exposure cap → HOLD, already long → HOLD/SELL, parametrised score boundaries |
+| [tests/test_signal_runner.py](../tests/test_signal_runner.py) | Synthetic prediction + risk_state in SQLite session; `signals` and `orders` rows written; idempotent re-run; `RISK_HALT=1` skips processing; Alpaca submission records `broker_order_id`; existing long position holds |
+| [tests/test_broker_alpaca.py](../tests/test_broker_alpaca.py) | `responses` mocks every endpoint; auth headers, bracket-order payload shape, retry-on-5xx then fail, immediate-fail-on-4xx |
+| [tests/test_broker_reconcile.py](../tests/test_broker_reconcile.py) | MagicMock'd Alpaca; status updates, fill creates Trade, partial→full only inserts the delta, broker positions mirrored, broker drops a name → local zeroed, `risk_state` row written |
+| [tests/test_report.py](../tests/test_report.py) | Typer CliRunner; report renders cleanly on empty and populated DB |
+
+CI never touches the live Alpaca API.
+
+## Real-world acceptance (manual)
+
+Populate `.env` with your personal Alpaca paper keys, run a few `run-signals` + `reconcile` cycles. Acceptance:
+- Orders appear in the Alpaca paper dashboard.
+- Local `orders.status` matches what Alpaca reports.
+- Local `positions` matches Alpaca's position list after reconcile.
+- Toggling `RISK_HALT=1` immediately stops new submissions on the next `run-signals`.
+
+## What's still out of scope (Phase 3.5+)
+
+- Next.js dashboard + FastAPI shim. See [phase-3.5-dashboard.md](phase-3.5-dashboard.md).
+- Short selling, pair trades.
+- Intraday signals (we run daily).
+- Manual override / kill-individual-position via API.
+- Multi-account portfolio aggregation.
 
 ## Predecessor / successor
 
 - **Depends on:** [Phase 2](phase-2-model-and-backtest.md) (`predictions` table populated).
-- **Unlocks:** [Phase 4](phase-4-live-and-ops.md) (deploy this stack off the dev laptop).
+- **Unlocks:** [Phase 4](phase-4-live-and-ops.md) — deploying this stack off the dev laptop.

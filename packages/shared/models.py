@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime as dt
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     Float,
@@ -11,6 +12,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -151,3 +153,104 @@ class BacktestRun(Base):
     notes: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
     __table_args__ = (Index("ix_backtest_runs_model_version", "model_version"),)
+
+
+class Signal(Base):
+    __tablename__ = "signals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(16), ForeignKey("tickers.symbol"), nullable=False)
+    ts: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    decision: Mapped[str] = mapped_column(String(8), nullable=False)
+    rationale: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "symbol", "ts", "model_version", name="uq_signals_symbol_ts_model"
+        ),
+        Index("ix_signals_symbol_ts", "symbol", "ts"),
+        Index("ix_signals_model_version", "model_version"),
+        Index("ix_signals_decision", "decision"),
+    )
+
+
+class Order(Base):
+    __tablename__ = "orders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(16), ForeignKey("tickers.symbol"), nullable=False)
+    side: Mapped[str] = mapped_column(String(8), nullable=False)
+    qty: Mapped[float] = mapped_column(Float, nullable=False)
+    order_type: Mapped[str] = mapped_column(String(16), nullable=False, default="market")
+    limit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stop_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    take_profit: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    submitted_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    filled_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    broker_order_id: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    signal_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("signals.id"), nullable=True
+    )
+
+    trades: Mapped[list["Trade"]] = relationship(back_populates="order")
+
+    __table_args__ = (
+        Index("ix_orders_status", "status"),
+        Index("ix_orders_symbol_submitted_at", "symbol", "submitted_at"),
+    )
+
+
+class Trade(Base):
+    __tablename__ = "trades"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    order_id: Mapped[int] = mapped_column(Integer, ForeignKey("orders.id"), nullable=False)
+    ts: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    qty: Mapped[float] = mapped_column(Float, nullable=False)
+    price: Mapped[float] = mapped_column(Float, nullable=False)
+    fee: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    broker_trade_id: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+
+    order: Mapped[Order] = relationship(back_populates="trades")
+
+    __table_args__ = (Index("ix_trades_order_id", "order_id"),)
+
+
+class Position(Base):
+    __tablename__ = "positions"
+
+    symbol: Mapped[str] = mapped_column(
+        String(16), ForeignKey("tickers.symbol"), primary_key=True
+    )
+    qty: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    avg_price: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="alpaca")
+
+
+class RiskState(Base):
+    __tablename__ = "risk_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ts: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    equity: Mapped[float] = mapped_column(Float, nullable=False)
+    cash: Mapped[float] = mapped_column(Float, nullable=False)
+    exposure_pct: Mapped[float] = mapped_column(Float, nullable=False)
+    max_drawdown: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    n_open_positions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    halted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (Index("ix_risk_state_ts", "ts"),)
