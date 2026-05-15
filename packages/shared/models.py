@@ -109,3 +109,45 @@ class Sentiment(Base):
     neg: Mapped[float] = mapped_column(Float, nullable=False)
 
     news_item: Mapped[NewsItem] = relationship(back_populates="sentiment")
+
+
+class Prediction(Base):
+    __tablename__ = "predictions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String(16), ForeignKey("tickers.symbol"), nullable=False)
+    ts: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    label_pred: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "symbol", "ts", "model_version", name="uq_predictions_symbol_ts_model"
+        ),
+        Index("ix_predictions_symbol_ts", "symbol", "ts"),
+        Index("ix_predictions_model_version", "model_version"),
+    )
+
+
+class BacktestRun(Base):
+    __tablename__ = "backtest_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    model_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    started_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    finished_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    threshold: Mapped[float] = mapped_column(Float, nullable=False)
+    sharpe: Mapped[float] = mapped_column(Float, nullable=False)
+    max_drawdown: Mapped[float] = mapped_column(Float, nullable=False)
+    hit_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    total_return: Mapped[float] = mapped_column(Float, nullable=False)
+    turnover: Mapped[float] = mapped_column(Float, nullable=False)
+    n_trades: Mapped[int] = mapped_column(Integer, nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+
+    __table_args__ = (Index("ix_backtest_runs_model_version", "model_version"),)

@@ -9,9 +9,11 @@ from packages.shared.config import get_settings
 from packages.shared.db import session_scope
 from packages.shared.logging import get_logger
 from services.ingestion import features, news, prices, sentiment
+from services.model import cli as model_cli
 
-app = typer.Typer(add_completion=False, help="Phase 1 data ingestion pipeline.")
+app = typer.Typer(add_completion=False, help="Stock-Prediction CLI — Phase 1 ingestion + Phase 2 model.")
 log = get_logger(__name__)
+model_cli.register(app)
 
 
 def _watchlist() -> list[str]:
