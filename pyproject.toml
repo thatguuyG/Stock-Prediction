@@ -23,6 +23,9 @@ dependencies = [
     "vaderSentiment>=3.3.2",
     "typer>=0.12",
     "python-dotenv>=1.0",
+    "xgboost>=2.0",
+    "joblib>=1.4",
+    "scikit-learn>=1.4",
 ]
 
 [project.optional-dependencies]
@@ -63,6 +66,11 @@ disable = [
     "unused-import",
     # Lazy imports inside upsert_ignore() are intentional (dialect-specific).
     "import-outside-toplevel",
+    # ML training/backtest functions naturally take many tuning knobs.
+    "too-many-arguments",
+    "too-many-positional-arguments",
+    "too-many-locals",
+    "too-many-instance-attributes",
 ]
 
 [tool.pylint.FORMAT]

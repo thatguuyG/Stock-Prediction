@@ -20,3 +20,6 @@ htmlcov/
 
 # OS
 .DS_Store
+
+# Trained model artifacts
+models/

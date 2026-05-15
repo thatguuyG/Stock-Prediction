@@ -24,7 +24,7 @@
                        │ feature matrix queries
                        ▼
   ┌─────────────────────────────────────────┐
-  │ Model service (XGBoost, later LSTM)     │  ❌ Phase 2
+  │ Model service (XGBoost, later LSTM)     │  ✅ Phase 2
   │   training, walk-forward CV, inference  │
   └────────────────────┬────────────────────┘
                        │ probability scores
@@ -56,8 +56,8 @@
 | Feature engineering (indicators) | ✅ implemented | `services/ingestion/features.py` (pandas-ta) |
 | Sentiment scoring | ✅ implemented | `services/ingestion/sentiment.py` (VADER) |
 | Storage | ✅ implemented | Postgres 16; 5-table schema; Alembic migrations |
-| Model training / inference | ❌ deferred → Phase 2 | XGBoost baseline planned |
-| Backtesting | ❌ deferred → Phase 2 | Backtrader harness planned |
+| Model training / inference | ✅ implemented | XGBoost baseline; `services/model/{train,predict}.py` |
+| Backtesting | ✅ implemented | Pure-pandas backtester ([ADR 0005](decisions/0005-pandas-backtester-over-backtrader.md)); `services/model/backtest.py` |
 | Signal engine | ❌ deferred → Phase 3 | Rules combining model + indicators + sentiment |
 | Broker execution | ❌ deferred → Phase 3 | Alpaca paper API |
 | Dashboard | ❌ deferred → Phase 3+ | Next.js or Nuxt, read-only first |
@@ -102,7 +102,7 @@ Each later component depends only on the contract of the layer below it. Capturi
 ├── docs/                       — this folder
 ├── services/
 │   ├── ingestion/              ✅ Phase 1
-│   ├── model/                  ❌ Phase 2
+│   ├── model/                  ✅ Phase 2
 │   ├── signal/                 ❌ Phase 3
 │   ├── broker/                 ❌ Phase 3
 │   └── dashboard/              ❌ Phase 3+ (Next.js)
