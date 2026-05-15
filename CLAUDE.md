@@ -96,10 +96,10 @@ The `model` column on `sentiments` and the `model_version` column on `prediction
 
 ## CI
 
-Two workflows in `.github/workflows/`:
-- `pylint.yml` — runs `pylint` on every push, Python 3.12
-- `test.yml` — runs `pytest` on push and PR, Python 3.12
+One workflow at `.github/workflows/ci.yml` with two parallel jobs:
+- `lint` — `pylint` on all tracked Python (excluding `migrations/`)
+- `test` — `pytest -q`
 
-Python 3.12+ is required because the only available `pandas-ta` releases on PyPI require it.
+Both run on push and PR, both on Python 3.12. Python 3.12+ is required because the only available `pandas-ta` releases on PyPI require it.
 
 Both install `pip install -e ".[dev]"` first; do not assume pip-installable packages without updating `pyproject.toml`.
