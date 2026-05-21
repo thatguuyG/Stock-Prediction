@@ -23,3 +23,12 @@ htmlcov/
 
 # Trained model artifacts
 models/
+
+# Node / Nx
+node_modules/
+.next/
+out/
+.nx/
+dist/
+.eslintcache
+*.tsbuildinfo

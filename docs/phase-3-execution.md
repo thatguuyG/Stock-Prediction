@@ -34,6 +34,28 @@ Recommended cron:
 */5 14-21 * * 1-5  stockpred reconcile
 ```
 
+## Getting Alpaca paper-trading keys
+
+The runner submits to Alpaca's **paper** endpoint by default (`ALPACA_BASE_URL=https://paper-api.alpaca.markets`). Paper trading is free, requires no funding, no KYC, and starts you with $100k of fake equity.
+
+1. **Sign up / log in** at https://alpaca.markets.
+2. **Switch to Paper Trading.** Top-right of the dashboard has a toggle between "Live Trading" and "Paper Trading" — make sure you're on **Paper**. Paper and live accounts have entirely separate keys, and a paper key submitted to the live URL (or vice versa) returns 401.
+3. **Open the API keys panel.** On the Paper Trading dashboard there's a section titled **"Your API Keys"** (sometimes shown as a small key icon on the right sidebar). Click **"View"** or **"Generate New Key"**.
+4. **Copy both values immediately into `.env`:**
+   - `API Key ID` → `ALPACA_KEY_ID`
+   - `Secret Key` → `ALPACA_SECRET_KEY`
+   - The secret is shown **exactly once**. If you close the dialog without copying it, you have to regenerate (which invalidates the previous secret).
+5. **Verify** by running:
+   ```bash
+   stockpred reconcile
+   ```
+   With valid keys you'll see `equity=... exposure=...%` printed. With bad keys the AlpacaClient raises an `AlpacaError` with a 401.
+
+Notes:
+- **Don't change `ALPACA_BASE_URL`** unless you're deliberately going live. Live keys are issued separately in the Live tab.
+- You can reset your paper account's balance from the dashboard at any time.
+- If `ALPACA_KEY_ID` / `ALPACA_SECRET_KEY` are empty, `stockpred run-signals` automatically degrades to `--dry-run` and writes signals without submitting orders, so a missing `.env` can never accidentally ship orders.
+
 ## Decisions locked in
 
 | Decision | Value | Source |

@@ -1,41 +1,136 @@
 # Phase 3.5 — Dashboard
 
-> **Status: DEFERRED — not yet implemented.**
-> This is a carve-out from Phase 3. The signal engine and broker landed without a UI; this phase adds one.
+> **Status: implemented.** Read-only Next.js dashboard fed by a FastAPI shim. Operators can now eyeball positions, signals, and the equity curve in a browser.
 
-## Why this is its own phase
+## What's in
 
-Phase 3 ships headless: positions, signals, and orders all reachable via `stockpred report` or `psql`. That's enough for development and for a hands-off paper-trading loop. A dashboard is a separate concern — separate language toolchain (Node + JS), separate deployment target, separate testing model — so it gets its own phase rather than padding Phase 3.
+- **FastAPI shim** at [services/api/](../services/api/) exposing four GET endpoints plus a `/healthz` probe over the Phase 3 schema.
+- **Next.js 15 dashboard** at [apps/dashboard/](../apps/dashboard/) with three pages: `/` (positions + summary), `/signals` (decisions with rationale), `/equity` (Recharts line chart).
+- **Nx workspace** at the repo root managing the Node side. Python lives at root, unchanged; an Nx project wrapper at [services/api/project.json](../services/api/project.json) makes `nx run-many --target=serve` boot both services.
+- **Localhost-only.** API binds to `127.0.0.1:8000`, dashboard to `localhost:3000`, dashboard rewrites `/api/*` to the FastAPI shim. No auth.
 
-## Scope (when this lands)
+## Architecture
 
-- A FastAPI shim ([services/api/](../services/api/)) exposing the existing DB tables as JSON:
-  - `GET /positions` — current portfolio from the `positions` table.
-  - `GET /signals?limit=50&decision=BUY` — recent decisions with the rule trace.
-  - `GET /orders?status=filled&limit=50` — order history.
-  - `GET /equity-curve?from=...&to=...` — `risk_state` time series.
-- A Next.js dashboard ([services/dashboard/](../services/dashboard/)) consuming the shim:
-  - Positions panel + P&L.
-  - Recent signals table with rationale (why each gate fired).
-  - Equity curve chart.
-  - Latest news headlines + sentiment (read-only join over `news_items` + `sentiments`).
-- Read-only first. No write endpoints in Phase 3.5 — order submission stays inside cron jobs. Manual overrides are a Phase 4 concern.
+```
+  ┌─────────────────────────────┐    rewrites /api/*    ┌────────────────────────┐
+  │ apps/dashboard (Next.js 15) │ ───────────────────▶ │ services/api (FastAPI) │
+  │ http://localhost:3000        │                       │ http://127.0.0.1:8000  │
+  └─────────────────────────────┘                       └───────────┬────────────┘
+                                                                    │ session_scope()
+                                                                    ▼
+                                                            ┌────────────────┐
+                                                            │   Postgres     │
+                                                            │ (or SQLite     │
+                                                            │  in tests)     │
+                                                            └────────────────┘
+```
 
-## Open questions when this starts
+The FastAPI shim is **read-only** — no write endpoints. Order submission stays in cron jobs (`stockpred run-signals`); the dashboard is a window, not a controller. Manual overrides are deliberately deferred to Phase 4.
 
-- Auth: a single shared password? OAuth via GitHub? None (localhost-only)?
-- Deployment: same Cloud Run as the other services, or static export to GitHub Pages + an API on Cloud Run?
-- Real-time: do we want WebSocket-pushed updates, or is a 30-second polling refresh fine for a paper-trading dashboard?
-- Component library: Tailwind + headless components, shadcn/ui, or full-bake like Mantine?
+## CLI / dev workflow
 
-## Acceptance
+```bash
+# install Node deps (one time)
+npm install
 
-- Loads in under 1 second on a fresh page hit.
-- Renders the same data `stockpred report` does, with charts.
-- No write endpoints; the dashboard is a window, not a controller.
-- E2E test: spin up the API shim against the SQLite test DB and assert the dashboard's positions endpoint matches what `Position.qty` says.
+# in one terminal: API
+nx serve api
+# in another: dashboard
+nx serve dashboard
+
+# or both at once
+npm run dev
+# (alias for `nx run-many --target=serve --projects=dashboard,api --parallel`)
+```
+
+Production build of the dashboard:
+
+```bash
+nx build dashboard
+```
+
+## API endpoints
+
+All return JSON. Implemented at [services/api/routers/](../services/api/routers/) and modelled in [services/api/schemas.py](../services/api/schemas.py).
+
+| Method | Path | Query params | Response |
+|---|---|---|---|
+| GET | `/healthz` | — | `{"status": "ok"}` |
+| GET | `/positions` | — | `list[Position]` (non-zero only) |
+| GET | `/signals` | `limit` (1–500), `decision` (BUY/SELL/HOLD) | `list[Signal]`, newest first |
+| GET | `/orders` | `limit`, `status` | `list[Order]`, newest first |
+| GET | `/equity` | `from`, `to` (ISO dates) | `list[EquityPoint]`, ascending |
+
+OpenAPI docs at `http://127.0.0.1:8000/docs` while the API is running.
+
+## Dashboard pages
+
+| Route | Source | What it shows |
+|---|---|---|
+| `/` | [src/app/page.tsx](../apps/dashboard/src/app/page.tsx) | Latest `risk_state` summary card + positions table |
+| `/signals` | [src/app/signals/page.tsx](../apps/dashboard/src/app/signals/page.tsx) | Last 50 signals; click "rationale" to expand the JSON audit |
+| `/equity` | [src/app/equity/page.tsx](../apps/dashboard/src/app/equity/page.tsx) | Recharts line chart of equity over time |
+
+Server components by default; only the rationale toggle (`SignalsTable`) and Recharts (`EquityChart`) are client components.
+
+## Tech stack
+
+| Layer | Choice | ADR |
+|---|---|---|
+| Monorepo | Nx 20 (Node side); Python stays Python | [0010](decisions/0010-nx-monorepo-for-frontend.md) |
+| API framework | FastAPI + uvicorn | [0011](decisions/0011-fastapi-thin-shim-over-orm-direct.md) |
+| Frontend | Next.js 15 App Router | User-chosen |
+| Styling | Tailwind CSS | Next.js default |
+| Charts | Recharts | User-chosen |
+| TS types | Hand-rolled in `src/types/api.ts` mirroring `services/api/schemas.py` | OpenAPI codegen is a future nicety |
+| Auth | None — localhost only | User-chosen |
+
+## Tests
+
+| File | Coverage |
+|---|---|
+| [tests/test_api_health.py](../tests/test_api_health.py) | `/healthz` returns 200 |
+| [tests/test_api_positions.py](../tests/test_api_positions.py) | Non-zero filter, empty-DB response, response shape |
+| [tests/test_api_signals.py](../tests/test_api_signals.py) | Most-recent-first ordering, `limit`, `decision` filter, rationale roundtrip, 422 on bad enum |
+| [tests/test_api_orders.py](../tests/test_api_orders.py) | Most-recent-first, status filter, limit cap, empty response |
+| [tests/test_api_equity.py](../tests/test_api_equity.py) | Ascending order, `from`/`to` filter, response shape |
+
+All FastAPI tests use `TestClient` with the `get_session` dependency overridden to use the existing SQLite-in-memory `session` fixture. **`conftest.py` was updated to use `StaticPool` + `check_same_thread=False`** so a single in-memory DB is shared across the FastAPI threadpool — see the conftest note.
+
+No Node tests in this phase. Dashboard verified manually via `nx serve dashboard`.
+
+## CI
+
+Existing `lint.yml` + `test.yml` workflows still cover the Python side. Node CI is deliberately deferred until/unless there's a regression risk worth gating.
+
+## Verification recipe
+
+```bash
+# Python
+pip install -e ".[dev]"
+pytest -q                                  # 91 tests pass (74 prior + 17 API)
+pylint $(find services packages -name '*.py') tests/*.py   # 10.00/10
+
+# Node
+npm install
+nx build dashboard                         # production build succeeds
+
+# End-to-end smoke
+nx serve api                               # term 1
+nx serve dashboard                         # term 2
+curl http://127.0.0.1:8000/healthz         # → {"status":"ok"}
+open http://localhost:3000                  # browse the three pages
+```
+
+## What's still out of scope
+
+- Production deployment (Phase 4).
+- Write endpoints / manual overrides (Phase 4).
+- Auth (added when we deploy publicly).
+- Real-time push (WebSocket). The dashboard re-fetches on navigation; if you need live updates, refresh.
+- E2E tests for the dashboard. Phase 4 can add a Playwright suite when the deployment story takes shape.
 
 ## Predecessor / successor
 
-- **Depends on:** [Phase 3](phase-3-execution.md) (data already flowing into `signals`, `orders`, `positions`, `risk_state`).
-- **Successor:** Phase 4's monitoring stack can reuse the same FastAPI shim for ops dashboards.
+- **Depends on:** [Phase 3](phase-3-execution.md) (positions / signals / orders / risk_state populated).
+- **Unlocks:** [Phase 4](phase-4-live-and-ops.md) — same FastAPI shim can be deployed and add monitoring panels.

@@ -26,6 +26,8 @@ dependencies = [
     "xgboost>=2.0",
     "joblib>=1.4",
     "scikit-learn>=1.4",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +38,7 @@ dev = [
     "responses>=0.25",
     "freezegun>=1.5",
     "pylint>=3.2",
+    "httpx>=0.27",
 ]
 
 [project.scripts]
