@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from packages.shared.config import get_settings
 from packages.shared.db import upsert_ignore
 from packages.shared.logging import get_logger
-from packages.shared.models import Order, Position, Prediction, RiskState, Signal
+from packages.shared.models import Order, Position, Prediction, PriceBar, RiskState, Signal
 from services.broker.alpaca import AlpacaClient, AlpacaError
 from services.model.features import build_feature_matrix
 from services.signal.rules import (
@@ -59,7 +59,19 @@ def _latest_features(session: Session) -> pd.DataFrame:
     df = build_feature_matrix(session)
     if df.empty:
         return df
-    return df.sort_values("ts").groupby("symbol", as_index=False).tail(1)
+    latest = df.sort_values("ts").groupby("symbol", as_index=False).tail(1)
+    closes = pd.DataFrame(
+        session.execute(select(PriceBar.symbol, PriceBar.ts, PriceBar.close)).all(),
+        columns=["symbol", "ts", "close"],
+    )
+    if closes.empty:
+        latest = latest.copy()
+        latest["close"] = float("nan")
+        return latest
+    closes["ts"] = pd.to_datetime(closes["ts"], utc=True).dt.tz_localize(None)
+    latest = latest.copy()
+    latest["ts"] = pd.to_datetime(latest["ts"], utc=True).dt.tz_localize(None)
+    return latest.merge(closes, on=["symbol", "ts"], how="left")
 
 
 def _portfolio_state(session: Session) -> tuple[float, float, int, dict[str, float]]:

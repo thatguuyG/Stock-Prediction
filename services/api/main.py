@@ -8,23 +8,23 @@ from services.api.routers import equity, health, orders, positions, signals
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(
+    application = FastAPI(
         title="Stock-Prediction Dashboard API",
         version="0.1.0",
         description="Read-only shim feeding the Next.js dashboard.",
     )
-    app.add_middleware(
+    application.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
         allow_methods=["GET"],
         allow_headers=["*"],
     )
-    app.include_router(health.router, tags=["health"])
-    app.include_router(positions.router, tags=["positions"])
-    app.include_router(signals.router, tags=["signals"])
-    app.include_router(orders.router, tags=["orders"])
-    app.include_router(equity.router, tags=["equity"])
-    return app
+    application.include_router(health.router, tags=["health"])
+    application.include_router(positions.router, tags=["positions"])
+    application.include_router(signals.router, tags=["signals"])
+    application.include_router(orders.router, tags=["orders"])
+    application.include_router(equity.router, tags=["equity"])
+    return application
 
 
 app = create_app()
