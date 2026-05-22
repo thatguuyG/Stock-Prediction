@@ -27,6 +27,11 @@ The repo uses `pyproject.toml` (no Poetry). `uv venv .venv && uv pip install -e 
 | Generate signals (paper trade) | `stockpred run-signals --model-version v1 [--dry-run]` |
 | Reconcile with Alpaca | `stockpred reconcile` |
 | Print terminal report | `stockpred report [--limit 50]` |
+| Install Node deps | `npm install` |
+| Start FastAPI shim | `nx serve api` (or `uvicorn services.api.main:app --reload`) |
+| Start dashboard | `nx serve dashboard` (Next.js dev at :3000) |
+| Start both at once | `npm run dev` |
+| Production build of dashboard | `nx build dashboard` |
 | Start Postgres locally | `docker compose up -d postgres` |
 | Apply migrations | `alembic upgrade head` |
 | Generate a new migration | `alembic revision --autogenerate -m "describe change"` |
@@ -36,20 +41,22 @@ Tests use an in-memory SQLite (see [tests/conftest.py](tests/conftest.py)); they
 
 ## Architecture
 
-This is a **phase-based monorepo**. Phases 1, 2, and 3 are implemented; Phase 3.5 (dashboard) and Phase 4 (ops) are designed in `docs/` and exist only as written contracts.
+This is a **phase-based monorepo**. Phases 1, 2, 3, and 3.5 are implemented; Phase 4 (ops) is designed in `docs/` and exists only as a written contract. The repo is now polyglot: Python (services + tests, managed by `pyproject.toml`) plus Node (Nx workspace at the root managing the `apps/dashboard/` Next.js app).
 
 **Implemented:**
 - Phase 1 — data ingestion (`services/ingestion/`): prices, indicators, news, sentiment → Postgres.
 - Phase 2 — model (`services/model/`): XGBoost walk-forward CV → predictions table; pure-pandas backtester → `backtest_runs`.
 - Phase 3 — signal engine (`services/signal/`) + Alpaca paper broker (`services/broker/`): rule-based BUY/SELL/HOLD with JSON rationale audit; bracket orders; reconciliation loop; `RISK_HALT` kill switch.
+- Phase 3.5 — FastAPI shim (`services/api/`) + Next.js 15 dashboard (`apps/dashboard/`): five GET endpoints over the Phase 3 schema, three pages (positions, signals, equity), Nx workspace orchestrating both via `nx run-many`.
 
-**Deferred:** Phase 3.5 (Next.js dashboard + FastAPI shim), Phase 4 (GCP deployment + monitoring + retraining).
+**Deferred:** Phase 4 (GCP deployment + monitoring + retraining).
 
 Always read [docs/architecture.md](docs/architecture.md) before adding a new component — it states which layers exist, the contracts between them, and which directory each future service will live in. [docs/decisions/](docs/decisions/) holds ADRs explaining the *why* of major choices.
 
 ### Layout
 
-- `services/<name>/` — deployable units. Today: `services/ingestion/` (Phase 1), `services/model/` (Phase 2), `services/signal/` + `services/broker/` (Phase 3).
+- `services/<name>/` — Python deployable units. Today: `services/ingestion/` (Phase 1), `services/model/` (Phase 2), `services/signal/` + `services/broker/` (Phase 3), `services/api/` (Phase 3.5).
+- `apps/<name>/` — Node apps managed by Nx. Today: `apps/dashboard/` (Next.js).
 - `packages/shared/` — config (`pydantic-settings`), DB engine/session, ORM models, logging. **All services depend on this; nothing in `packages/shared/` should import from `services/`**.
 - `migrations/` — single Alembic history for the whole DB schema. One migration per logical change; never edit a migration after it lands on `main`.
 - `tests/` — flat layout, one test module per ingestion module.
@@ -116,6 +123,18 @@ The `model` column on `sentiments`, `model_version` column on `predictions`, and
 15. **`RISK_HALT=1` is the kill switch.** `run-signals` checks it first and returns immediately. Reconcile still runs (we want continuing state tracking even while halted). Each `risk_state` row records the halt status at the time it was written.
 
 16. **CLI cron over in-process scheduler.** `run-signals` and `reconcile` exit when done; the host's crontab (or Cloud Scheduler, or GitHub Actions schedule) decides cadence. See [ADR 0008](docs/decisions/0008-cli-cron-over-long-lived-scheduler.md).
+
+### Phase 3.5 conventions
+
+17. **Nx for Node only; Python stays Python.** Nx manages `apps/dashboard/` and provides a `nx:run-commands` wrapper for `services/api/` so `nx run-many` boots both. Python is still owned by `pyproject.toml` + pip — no `@nxlv/python` plugin. See [ADR 0010](docs/decisions/0010-nx-monorepo-for-frontend.md).
+
+18. **FastAPI is read-only.** No write endpoints — order submission stays in `stockpred run-signals`. The dashboard is a window, not a controller. See [ADR 0011](docs/decisions/0011-fastapi-thin-shim-over-orm-direct.md).
+
+19. **TS types mirror Pydantic by hand.** [apps/dashboard/src/types/api.ts](apps/dashboard/src/types/api.ts) mirrors [services/api/schemas.py](services/api/schemas.py). When you add/change an API field, update both. Auto-generation via `openapi-typescript` is a future nicety.
+
+20. **SQLite-in-memory + FastAPI threadpool requires StaticPool.** `tests/conftest.py` uses `poolclass=StaticPool` + `check_same_thread=False` so the FastAPI threadpool shares the same `:memory:` DB as the test fixture. If you change the engine setup, keep this — without it the API tests get "no such table" errors.
+
+21. **Localhost-only by default.** FastAPI binds to 127.0.0.1:8000; CORS allows only http://localhost:3000. If we deploy publicly later, add auth (see Phase 4).
 
 ## CI
 

@@ -10,7 +10,7 @@ The system is built in phases. **Phase 1 is implemented today**; Phases 2–4 ar
 | [phase-1-data-and-signals.md](phase-1-data-and-signals.md) | **implemented** | DB schema, CLI, indicators, sentiment model, verification recipe |
 | [phase-2-model-and-backtest.md](phase-2-model-and-backtest.md) | **implemented** | XGBoost baseline, walk-forward CV, pure-pandas backtester, metrics |
 | [phase-3-execution.md](phase-3-execution.md) | **implemented** (no dashboard) | Signal engine rules, Alpaca paper integration, order lifecycle, risk halt |
-| [phase-3.5-dashboard.md](phase-3.5-dashboard.md) | **deferred** | FastAPI shim + Next.js dashboard (carve-out from Phase 3) |
+| [phase-3.5-dashboard.md](phase-3.5-dashboard.md) | **implemented** | FastAPI shim + Next.js dashboard, Nx monorepo |
 | [phase-4-live-and-ops.md](phase-4-live-and-ops.md) | **deferred** | GCP Cloud Run deployment, scheduling, monitoring, retraining, alerts |
 
 ## Architecture Decision Records (ADRs)
@@ -26,6 +26,8 @@ Decisions taken so far. Each ADR follows: Context / Decision / Consequences / Al
 - [decisions/0007-thin-alpaca-client-over-alpaca-py.md](decisions/0007-thin-alpaca-client-over-alpaca-py.md)
 - [decisions/0008-cli-cron-over-long-lived-scheduler.md](decisions/0008-cli-cron-over-long-lived-scheduler.md)
 - [decisions/0009-signal-rationale-as-jsonb.md](decisions/0009-signal-rationale-as-jsonb.md)
+- [decisions/0010-nx-monorepo-for-frontend.md](decisions/0010-nx-monorepo-for-frontend.md)
+- [decisions/0011-fastapi-thin-shim-over-orm-direct.md](decisions/0011-fastapi-thin-shim-over-orm-direct.md)
 
 ## How to read these docs
 

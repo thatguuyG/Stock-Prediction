@@ -1,0 +1,21 @@
+{
+  "name": "api",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "services/api",
+  "projectType": "application",
+  "tags": ["scope:backend"],
+  "targets": {
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "./.venv/bin/uvicorn services.api.main:app --reload --host 127.0.0.1 --port 8000"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "./.venv/bin/pytest tests/test_api_*.py -q"
+      }
+    }
+  }
+}

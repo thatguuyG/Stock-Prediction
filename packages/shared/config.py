@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     )
     risk_halt: bool = Field(default=False, alias="RISK_HALT")
 
+    api_host: str = Field(default="127.0.0.1", alias="API_HOST")
+    api_port: int = Field(default=8000, alias="API_PORT")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
