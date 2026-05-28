@@ -12,7 +12,7 @@
     "dev": "nx run-many --target=serve --projects=dashboard,api --parallel"
   },
   "devDependencies": {
-    "@nx/next": "^22.7.2",
+    "@nx/next": "^22.7.5",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
