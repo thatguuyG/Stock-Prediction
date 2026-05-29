@@ -32,3 +32,6 @@ out/
 dist/
 .eslintcache
 *.tsbuildinfo
+
+.claude/worktrees
+.claude/settings.local.json
