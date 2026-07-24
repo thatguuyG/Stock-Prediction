@@ -12,13 +12,13 @@
     "dev": "nx run-many --target=serve --projects=dashboard,api --parallel"
   },
   "devDependencies": {
-    "@nx/next": "^23.0.0",
+    "@nx/next": "^23.1.0",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.16.0",
     "eslint-config-next": "^15.1.0",
-    "nx": "^22.7.5",
+    "nx": "^22.7.7",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
     "typescript": "^5.7.2"
