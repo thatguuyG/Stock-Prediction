@@ -56,7 +56,7 @@ def _latest_predictions(session: Session, model_version: str) -> pd.DataFrame:
 
 
 def _latest_features(session: Session) -> pd.DataFrame:
-    df = build_feature_matrix(session)
+    df = build_feature_matrix(session, require_target=False)
     if df.empty:
         return df
     latest = df.sort_values("ts").groupby("symbol", as_index=False).tail(1)

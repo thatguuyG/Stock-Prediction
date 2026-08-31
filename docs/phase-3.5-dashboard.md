@@ -73,6 +73,32 @@ OpenAPI docs at `http://127.0.0.1:8000/docs` while the API is running.
 
 Server components by default; only the rationale toggle (`SignalsTable`) and Recharts (`EquityChart`) are client components.
 
+### Fetching: why the API base URL is environment-dependent
+
+[src/lib/api.ts](../apps/dashboard/src/lib/api.ts) picks its base URL by execution context:
+
+```ts
+const BASE =
+  typeof window === 'undefined'
+    ? `http://${process.env.API_HOST ?? '127.0.0.1'}:${process.env.API_PORT ?? '8000'}`
+    : '/api';
+```
+
+The `/api/*` rewrite in [next.config.mjs](../apps/dashboard/next.config.mjs) only
+applies to requests that reach the Next.js HTTP server — i.e. from a **browser**.
+All three pages are async Server Components, so their fetches run in Node during
+SSR, where a relative URL has no origin and `fetch` throws
+`TypeError: Failed to parse URL from /api/positions`.
+
+**Keep the server branch absolute.** Reverting it to a bare `/api` makes every
+page render its empty state, because each one wraps its call in
+`.catch(() => [])` — so a total API failure is visually identical to an empty
+database. If the dashboard ever looks blank, check
+`curl 127.0.0.1:8000/healthz` before suspecting the data pipeline.
+
+Client-side calls keep `/api` so they continue to flow through the rewrite and
+avoid CORS.
+
 ## Tech stack
 
 | Layer | Choice | ADR |

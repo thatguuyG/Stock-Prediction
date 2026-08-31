@@ -26,6 +26,20 @@ stockpred backtest  --model-version v1 [--threshold 0.55] [--slippage-bps 5] [--
 
 `train` does walk-forward CV, writes per-fold validation predictions, then retrains on the full dataset and saves the final model to `models/<version>.joblib`.
 `predict` loads that artifact and scores any (symbol, ts) rows in the current feature matrix.
+
+> **`train` is not sufficient on its own.** The predictions it writes are
+> *validation-fold* rows that stop at the last completed fold — typically months
+> behind today. Always follow a train with `stockpred predict` before
+> `run-signals`, or the signal runner will find nothing current to act on.
+
+### Minimum data
+
+Walk-forward CV needs `train_window + val_window` = **315 distinct trading days
+in the feature matrix**, which is ~200 bars shorter than your raw history because
+`sma_200` needs that warm-up. Roughly: `feature days ≈ price bars − 200`. Ingest
+4+ years (`--since 2020-01-01`); otherwise `train` raises
+`Not enough data for walk-forward CV`. Sizing table in
+[operations.md](operations.md#5-data-requirements).
 `backtest` reads `predictions` for a model_version, joins with `price_bars`, runs the long-only policy, and writes one row per run to `backtest_runs`.
 
 ## Locked-in defaults
@@ -71,7 +85,30 @@ For each `(symbol, ts)` row in the feature matrix:
 | Sentiment | `sent_mean_1d`, `sent_mean_3d`, `sent_mean_7d` (trailing mean compound) | Daily mean of `sentiments` joined to `news_items.published_at`; missing days = 0 |
 | Volume | `vol_zscore_20d` (rolling 20-day z-score) | `price_bars.volume` |
 
-Target: `1` if `close[t+1] > close[t]`, else `0`. Most-recent row per symbol is dropped at training time. Lags and rolling stats use `groupby(symbol)` so they never bleed across tickers.
+Target: `1` if `close[t+1] > close[t]`, else `0`. Lags and rolling stats use `groupby(symbol)` so they never bleed across tickers.
+
+### Prediction horizon
+
+**The horizon is exactly one trading day.** The target above and the backtester's
+return calculation (`close[t+1]/close[t] - 1`) measure the same thing. A score is
+a probability about the *next session's close* — not a general verdict on the
+stock — so a signal is stale the moment that session ends. This drives the
+scheduling rules in [operations.md](operations.md#1-the-one-thing-to-understand-first).
+
+### `require_target` — training vs inference
+
+`build_feature_matrix(session, since=None, require_target=True)` always drops rows
+with NaN features (the indicator warm-up). The flag controls the newest bar per
+symbol, whose target is unknowable because its next close doesn't exist yet:
+
+| Caller | `require_target` | Newest bar |
+|---|---|---|
+| `train` | `True` (default) | dropped — no label to learn from |
+| `predict`, signal runner | `False` | **kept** — scoring it is the point of a live signal |
+
+Inference must pass `False`. With `True`, `predictions` can never reach the
+latest bar, every signal is generated from data one session old, and the runner's
+`(symbol, ts)` join against current features comes up empty.
 
 ## Walk-forward CV protocol
 

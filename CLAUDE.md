@@ -22,7 +22,9 @@ The repo uses `pyproject.toml` (no Poetry). `uv venv .venv && uv pip install -e 
 | Run the ingestion CLI | `stockpred run-daily --since 2024-01-01` |
 | Individual ingest steps | `stockpred ingest-prices --since 2024-01-01`, `stockpred compute-features`, `stockpred ingest-news`, `stockpred score-sentiment` |
 | Train a model | `stockpred train --model-version v1 [--since 2020-01-01]` |
-| Batch inference | `stockpred predict --model-version v1` |
+| Batch inference | `stockpred predict --model-version v1` (**required after every train**) |
+| Nightly pipeline (cron) | `./scripts/daily.sh [--dry-run]` |
+| Reconcile loop (cron) | `./scripts/reconcile.sh` |
 | Run a backtest | `stockpred backtest --model-version v1 [--threshold 0.55]` |
 | Generate signals (paper trade) | `stockpred run-signals --model-version v1 [--dry-run]` |
 | Reconcile with Alpaca | `stockpred reconcile` |
@@ -68,7 +70,7 @@ Always read [docs/architecture.md](docs/architecture.md) before adding a new com
 
 2. **Long-form storage for indicators.** The `indicators` table is `(symbol, ts, name, value)` — one row per metric. Adding a new indicator is a code change in `services/ingestion/features.py` plus a row in `INDICATOR_COLUMNS`; it is **not** a schema migration. See [ADR 0004](docs/decisions/0004-postgres-long-form-indicators.md).
 
-3. **Dialect-agnostic upserts.** `upsert_ignore()` detects Postgres vs SQLite at runtime so the same code path serves production and tests. Don't import `sqlalchemy.dialects.postgresql.insert` directly in service code.
+3. **Dialect-agnostic upserts.** `upsert_ignore()` detects Postgres vs SQLite at runtime so the same code path serves production and tests. Don't import `sqlalchemy.dialects.postgresql.insert` directly in service code. It also **chunks at `MAX_BIND_PARAMS` (30k) bound parameters** — Postgres' wire protocol hard-caps a statement at 65535, which a multi-year indicator backfill exceeds. Keep the chunking if you touch this function; without it, large `--since` ingests die with `number of parameters must be between 0 and 65535`.
 
 4. **CLI is the only entrypoint.** `services/ingestion/cli.py` is the `typer` app installed as the `stockpred` console script. It mounts subcommands from each service via `<service>/cli.py:register(app)` at import time, so Phase 1 (`ingest-prices`, …), Phase 2 (`train`, `predict`, `backtest`), and Phase 3 (`run-signals`, `reconcile`, `report`) commands all live on the same top-level CLI. There are no other entry points — no `__main__.py` modules with their own argparse, no notebooks committed to the repo.
 
@@ -108,6 +110,10 @@ The `model` column on `sentiments`, `model_version` column on `predictions`, and
 
 9. **Model artifacts live in `models/<version>.joblib`** and are gitignored. The trained XGBoost classifier is serialised together with `feature_columns` so the prediction code can re-validate inputs.
 
+9a. **`train` → `predict` is a required pair.** `train` writes only walk-forward *validation* predictions, which stop at the last completed fold. Inference (`stockpred predict`) is what scores current bars. Skipping it makes `run-signals` emit zero signals **silently** — `run_once` inner-joins predictions against features on `(symbol, ts)` and logs a warning rather than raising.
+
+9b. **`build_feature_matrix(..., require_target=)` separates training from inference.** Training keeps the default `True`, which drops the newest bar per symbol (its `close[t+1]` label doesn't exist yet). Inference callers — `services/model/predict.py` and `services/signal/runner.py:_latest_features` — must pass `False`, or predictions can never reach the latest bar and every signal is a session stale. The prediction horizon is one trading day; see [docs/operations.md](docs/operations.md).
+
 10. **Walk-forward CV defaults to 252/63/63 trading days.** Smaller test datasets must pass explicit `train_window`/`val_window`/`step` overrides — see [tests/test_model_train.py](tests/test_model_train.py).
 
 11. **Synthetic-data testing for ML code.** Training/inference/backtest tests build a deterministic embedded-signal dataset directly in the SQLite test session — never call `yfinance` from a test. See [ADR 0006](docs/decisions/0006-walk-forward-cv-windows.md).
@@ -135,6 +141,12 @@ The `model` column on `sentiments`, `model_version` column on `predictions`, and
 20. **SQLite-in-memory + FastAPI threadpool requires StaticPool.** `tests/conftest.py` uses `poolclass=StaticPool` + `check_same_thread=False` so the FastAPI threadpool shares the same `:memory:` DB as the test fixture. If you change the engine setup, keep this — without it the API tests get "no such table" errors.
 
 21. **Localhost-only by default.** FastAPI binds to 127.0.0.1:8000; CORS allows only http://localhost:3000. If we deploy publicly later, add auth (see Phase 4).
+
+22. **The dashboard's API base URL must stay absolute server-side.** [apps/dashboard/src/lib/api.ts](apps/dashboard/src/lib/api.ts) branches on `typeof window === 'undefined'`: Node gets `http://API_HOST:API_PORT`, the browser gets `/api` (via the `next.config.mjs` rewrite). The rewrite only covers requests that reach the Next server, and all three pages are async Server Components — a relative URL there throws `Failed to parse URL`. Since every page wraps its fetch in `.catch(() => [])`, that failure renders as a normal empty dashboard rather than an error.
+
+### Operations
+
+23. **Read [docs/operations.md](docs/operations.md) before changing scheduling, signal timing, or anything that affects when trades fire.** It records the one-day prediction horizon, the cron layout (pinned to `CRON_TZ=America/New_York`, not a UTC offset), how a BUY becomes a filled order, and the known gaps — no staleness guard, holding period vs. horizon mismatch, no advisory lock on `run-signals`.
 
 ## CI
 

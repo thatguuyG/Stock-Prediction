@@ -38,7 +38,7 @@ def predict(
     model = artifact["model"]
     feature_columns = artifact["feature_columns"]
 
-    df = build_feature_matrix(session, since=since)
+    df = build_feature_matrix(session, since=since, require_target=False)
     if df.empty:
         log.warning("predict: feature matrix is empty; nothing to score.")
         return 0

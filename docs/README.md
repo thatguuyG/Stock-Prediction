@@ -1,11 +1,14 @@
 # Stock-Prediction Documentation
 
-The system is built in phases. **Phase 1 is implemented today**; Phases 2–4 are designed but not yet built.
+The system is built in phases. **Phases 1 through 3.5 are implemented**; Phase 4 (deployment + ops) is designed but not yet built.
+
+**Running the system day to day? Start with [operations.md](operations.md).**
 
 ## Index
 
 | Doc | Status | What's inside |
 |---|---|---|
+| [operations.md](operations.md) | living | **Operator runbook** — cron schedule, how signals become trades, decision reference, troubleshooting, known gaps |
 | [architecture.md](architecture.md) | living | Target system diagram, component contracts, which layers exist today |
 | [phase-1-data-and-signals.md](phase-1-data-and-signals.md) | **implemented** | DB schema, CLI, indicators, sentiment model, verification recipe |
 | [phase-2-model-and-backtest.md](phase-2-model-and-backtest.md) | **implemented** | XGBoost baseline, walk-forward CV, pure-pandas backtester, metrics |
@@ -31,7 +34,8 @@ Decisions taken so far. Each ADR follows: Context / Decision / Consequences / Al
 
 ## How to read these docs
 
-- The **architecture** doc is the map. Start there.
-- The **phase-1** doc is the operator's reference for the current build.
-- The **phase-2/3/4** docs are intent, not specification. They will evolve as each phase begins.
+- The **operations** doc is what you want if you're running the system rather than changing it.
+- The **architecture** doc is the map. Start there for code changes.
+- The **phase-1/2/3/3.5** docs are the per-component references for what's built.
+- The **phase-4** doc is intent, not specification. It will evolve when that phase begins.
 - ADRs capture *why* a choice was made so a future contributor can either defend or revisit it.
