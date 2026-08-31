@@ -28,12 +28,15 @@ The repo uses `pyproject.toml` (no Poetry). `uv venv .venv && uv pip install -e 
 | Run a backtest | `stockpred backtest --model-version v1 [--threshold 0.55]` |
 | Generate signals (paper trade) | `stockpred run-signals --model-version v1 [--dry-run]` |
 | Reconcile with Alpaca | `stockpred reconcile` |
+| Diagnose Alpaca auth (masked) | `stockpred check-alpaca` |
 | Print terminal report | `stockpred report [--limit 50]` |
 | Install Node deps | `npm install` |
 | Start FastAPI shim | `nx serve api` (or `uvicorn services.api.main:app --reload`) |
 | Start dashboard | `nx serve dashboard` (Next.js dev at :3000) |
 | Start both at once | `npm run dev` |
 | Production build of dashboard | `nx build dashboard` |
+| Lint the dashboard | `nx lint dashboard` (eslint flat config; Next 16 removed `next lint`) |
+| Typecheck the dashboard | `nx typecheck dashboard` |
 | Start Postgres locally | `docker compose up -d postgres` |
 | Apply migrations | `alembic upgrade head` |
 | Generate a new migration | `alembic revision --autogenerate -m "describe change"` |
@@ -49,7 +52,7 @@ This is a **phase-based monorepo**. Phases 1, 2, 3, and 3.5 are implemented; Pha
 - Phase 1 — data ingestion (`services/ingestion/`): prices, indicators, news, sentiment → Postgres.
 - Phase 2 — model (`services/model/`): XGBoost walk-forward CV → predictions table; pure-pandas backtester → `backtest_runs`.
 - Phase 3 — signal engine (`services/signal/`) + Alpaca paper broker (`services/broker/`): rule-based BUY/SELL/HOLD with JSON rationale audit; bracket orders; reconciliation loop; `RISK_HALT` kill switch.
-- Phase 3.5 — FastAPI shim (`services/api/`) + Next.js 15 dashboard (`apps/dashboard/`): five GET endpoints over the Phase 3 schema, three pages (positions, signals, equity), Nx workspace orchestrating both via `nx run-many`.
+- Phase 3.5 — FastAPI shim (`services/api/`) + Next.js 16 dashboard (`apps/dashboard/`): five GET endpoints over the Phase 3 schema, three pages (positions, signals, equity), Nx workspace orchestrating both via `nx run-many`.
 
 **Deferred:** Phase 4 (GCP deployment + monitoring + retraining).
 
@@ -150,13 +153,14 @@ The `model` column on `sentiments`, `model_version` column on `predictions`, and
 
 ## CI
 
-One workflow at `.github/workflows/ci.yml` with two parallel jobs:
+One workflow at `.github/workflows/ci.yml` with three parallel jobs:
 - `lint` — `pylint` on all tracked Python (excluding `migrations/`)
 - `test` — `pytest -q`
+- `dashboard` — `nx run-many --target=lint,typecheck,build --projects=dashboard`
 
-Both run on push and PR, both on Python 3.12. Python 3.12+ is required because the only available `pandas-ta` releases on PyPI require it.
+All three run on push and PR. The two Python jobs run on Python 3.12 — required because the only available `pandas-ta` releases on PyPI need it — and both install `pip install -e ".[dev]"` first; do not assume pip-installable packages without updating `pyproject.toml`. The `dashboard` job runs on Node 22 with `npm ci`, so `package-lock.json` must stay in sync with `package.json`.
 
-Both install `pip install -e ".[dev]"` first; do not assume pip-installable packages without updating `pyproject.toml`.
+**There are no frontend tests yet.** The `dashboard` job catches type errors, lint violations, and build breaks — nothing about runtime behaviour. `apps/dashboard/` has no test target.
 
 
 <!-- nx configuration start-->

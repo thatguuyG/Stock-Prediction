@@ -48,6 +48,13 @@ stockpred ingest-news
 stockpred score-sentiment
 ```
 
+Two commands for looking at the system rather than driving it:
+
+```bash
+stockpred report [--limit 50]   # positions, recent signals, risk state, in the terminal
+stockpred check-alpaca          # verify broker credentials (masked) — first stop on a 401
+```
+
 ### Two things that will trip you up
 
 **`train` alone does not produce tradeable signals.** It writes only walk-forward *validation* predictions, which stop months short of today. `stockpred predict` is the inference pass that scores current bars. Skip it and `run-signals` silently emits zero signals — the dashboard just looks empty.
@@ -78,7 +85,7 @@ Keep `--dry-run` on the daily job until you've reviewed a week of decisions. `RI
 - [services/signal/](services/signal/) — Phase 3 signal engine
 - [services/broker/](services/broker/) — Phase 3 Alpaca client + reconciler
 - [services/api/](services/api/) — Phase 3.5 FastAPI shim for the dashboard
-- [apps/dashboard/](apps/dashboard/) — Phase 3.5 Next.js 15 dashboard
+- [apps/dashboard/](apps/dashboard/) — Phase 3.5 Next.js 16 dashboard
 - [packages/shared/](packages/shared/) — config, DB, ORM models, logging used across services
 - [migrations/](migrations/) — Alembic schema migrations
 - [scripts/](scripts/) — cron wrappers for the nightly pipeline and reconcile loop
@@ -87,8 +94,12 @@ Keep `--dry-run` on the daily job until you've reviewed a week of decisions. `RI
 
 ## CI
 
-[.github/workflows/ci.yml](.github/workflows/ci.yml) runs pylint and pytest in parallel jobs on push and PR.
+[.github/workflows/ci.yml](.github/workflows/ci.yml) runs three parallel jobs on push and PR:
+`lint` (pylint), `test` (pytest), and `dashboard` (eslint + `tsc --noEmit` + `next build`).
+
+There are no frontend tests yet — the `dashboard` job catches type errors, lint violations,
+and build breaks, but nothing about runtime behaviour.
 
 ## License
 
-MIT
+[MIT](LICENSE)

@@ -5,7 +5,7 @@
 ## What's in
 
 - **FastAPI shim** at [services/api/](../services/api/) exposing four GET endpoints plus a `/healthz` probe over the Phase 3 schema.
-- **Next.js 15 dashboard** at [apps/dashboard/](../apps/dashboard/) with three pages: `/` (positions + summary), `/signals` (decisions with rationale), `/equity` (Recharts line chart).
+- **Next.js 16 dashboard** at [apps/dashboard/](../apps/dashboard/) with three pages: `/` (positions + summary), `/signals` (decisions with rationale), `/equity` (Recharts line chart).
 - **Nx workspace** at the repo root managing the Node side. Python lives at root, unchanged; an Nx project wrapper at [services/api/project.json](../services/api/project.json) makes `nx run-many --target=serve` boot both services.
 - **Localhost-only.** API binds to `127.0.0.1:8000`, dashboard to `localhost:3000`, dashboard rewrites `/api/*` to the FastAPI shim. No auth.
 
@@ -13,7 +13,7 @@
 
 ```
   ┌─────────────────────────────┐    rewrites /api/*    ┌────────────────────────┐
-  │ apps/dashboard (Next.js 15) │ ───────────────────▶ │ services/api (FastAPI) │
+  │ apps/dashboard (Next.js 16) │ ───────────────────▶ │ services/api (FastAPI) │
   │ http://localhost:3000        │                       │ http://127.0.0.1:8000  │
   └─────────────────────────────┘                       └───────────┬────────────┘
                                                                     │ session_scope()
@@ -48,6 +48,16 @@ Production build of the dashboard:
 ```bash
 nx build dashboard
 ```
+
+Lint and typecheck (both run in CI as the `dashboard` job):
+
+```bash
+nx lint dashboard        # eslint flat config at apps/dashboard/eslint.config.mjs
+nx typecheck dashboard   # tsc --noEmit
+```
+
+Next 16 removed the `next lint` command, so linting invokes the eslint CLI directly against
+`eslint-config-next/core-web-vitals` + `eslint-config-next/typescript` in flat-config form.
 
 ## API endpoints
 
@@ -105,7 +115,7 @@ avoid CORS.
 |---|---|---|
 | Monorepo | Nx 20 (Node side); Python stays Python | [0010](decisions/0010-nx-monorepo-for-frontend.md) |
 | API framework | FastAPI + uvicorn | [0011](decisions/0011-fastapi-thin-shim-over-orm-direct.md) |
-| Frontend | Next.js 15 App Router | User-chosen |
+| Frontend | Next.js 16 App Router | User-chosen |
 | Styling | Tailwind CSS | Next.js default |
 | Charts | Recharts | User-chosen |
 | TS types | Hand-rolled in `src/types/api.ts` mirroring `services/api/schemas.py` | OpenAPI codegen is a future nicety |

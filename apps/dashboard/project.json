@@ -3,7 +3,9 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "apps/dashboard/src",
   "projectType": "application",
-  "tags": ["scope:frontend"],
+  "tags": [
+    "scope:frontend"
+  ],
   "targets": {
     "build": {
       "executor": "nx:run-commands",
@@ -22,7 +24,14 @@
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "next lint",
+        "command": "eslint . --max-warnings 0",
+        "cwd": "apps/dashboard"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p tsconfig.json",
         "cwd": "apps/dashboard"
       }
     }

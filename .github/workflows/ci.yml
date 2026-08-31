@@ -34,3 +34,17 @@ jobs:
           pip install -e ".[dev]"
       - name: Run pytest
         run: pytest -q
+
+  dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install Node deps
+        run: npm ci
+      - name: Lint, typecheck and build the dashboard
+        run: npx nx run-many --target=lint,typecheck,build --projects=dashboard

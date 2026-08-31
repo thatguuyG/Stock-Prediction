@@ -12,7 +12,7 @@ The system is built in phases. **Phases 1 through 3.5 are implemented**; Phase 4
 | [architecture.md](architecture.md) | living | Target system diagram, component contracts, which layers exist today |
 | [phase-1-data-and-signals.md](phase-1-data-and-signals.md) | **implemented** | DB schema, CLI, indicators, sentiment model, verification recipe |
 | [phase-2-model-and-backtest.md](phase-2-model-and-backtest.md) | **implemented** | XGBoost baseline, walk-forward CV, pure-pandas backtester, metrics |
-| [phase-3-execution.md](phase-3-execution.md) | **implemented** (no dashboard) | Signal engine rules, Alpaca paper integration, order lifecycle, risk halt |
+| [phase-3-execution.md](phase-3-execution.md) | **implemented** | Signal engine rules, Alpaca paper integration, order lifecycle, risk halt |
 | [phase-3.5-dashboard.md](phase-3.5-dashboard.md) | **implemented** | FastAPI shim + Next.js dashboard, Nx monorepo |
 | [phase-4-live-and-ops.md](phase-4-live-and-ops.md) | **deferred** | GCP Cloud Run deployment, scheduling, monitoring, retraining, alerts |
 

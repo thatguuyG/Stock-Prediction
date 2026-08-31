@@ -56,12 +56,12 @@
 | Data ingestion (prices, news) | ✅ implemented | `services/ingestion/{prices,news}.py` |
 | Feature engineering (indicators) | ✅ implemented | `services/ingestion/features.py` (pandas-ta) |
 | Sentiment scoring | ✅ implemented | `services/ingestion/sentiment.py` (VADER) |
-| Storage | ✅ implemented | Postgres 16; 5-table schema; Alembic migrations |
+| Storage | ✅ implemented | Postgres 16; 12-table schema; Alembic migrations |
 | Model training / inference | ✅ implemented | XGBoost baseline; `services/model/{train,predict}.py` |
 | Backtesting | ✅ implemented | Pure-pandas backtester ([ADR 0005](decisions/0005-pandas-backtester-over-backtrader.md)); `services/model/backtest.py` |
 | Signal engine | ✅ implemented | `services/signal/rules.py` + `runner.py`; rationale logged to `signals.rationale` JSON |
 | Broker execution | ✅ implemented | Thin Alpaca client (`services/broker/alpaca.py`); bracket orders; reconciliation loop |
-| Dashboard | ✅ implemented | Next.js 15 App Router at `apps/dashboard/`; FastAPI shim at `services/api/` |
+| Dashboard | ✅ implemented | Next.js 16 App Router at `apps/dashboard/`; FastAPI shim at `services/api/` |
 | Live deployment | ❌ deferred → Phase 4 | GCP Cloud Run + Cloud Scheduler |
 | Monitoring / alerting | ❌ deferred → Phase 4 | TBD (likely GCP-native) |
 
@@ -108,7 +108,7 @@ Each later component depends only on the contract of the layer below it. Capturi
 │   ├── broker/                 ✅ Phase 3
 │   └── api/                    ✅ Phase 3.5 (FastAPI shim)
 ├── apps/
-│   └── dashboard/              ✅ Phase 3.5 (Next.js 15)
+│   └── dashboard/              ✅ Phase 3.5 (Next.js 16)
 ├── packages/shared/            — config, db, models, logging
 └── tests/
 ```
