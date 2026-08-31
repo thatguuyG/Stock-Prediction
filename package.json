@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "@nx/next": "^23.1.1",
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

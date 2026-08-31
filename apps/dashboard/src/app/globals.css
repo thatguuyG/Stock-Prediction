@@ -1,6 +1,9 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* Tailwind v4 is configured in CSS; this replaces the old tailwind.config.ts theme. */
+@theme {
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
 
 :root {
   --background: 0 0% 100%;

@@ -116,7 +116,7 @@ avoid CORS.
 | Monorepo | Nx 20 (Node side); Python stays Python | [0010](decisions/0010-nx-monorepo-for-frontend.md) |
 | API framework | FastAPI + uvicorn | [0011](decisions/0011-fastapi-thin-shim-over-orm-direct.md) |
 | Frontend | Next.js 16 App Router | User-chosen |
-| Styling | Tailwind CSS | Next.js default |
+| Styling | Tailwind CSS v4 | Next.js default. v4 is configured in CSS (`@import "tailwindcss"` + `@theme` in [globals.css](../apps/dashboard/src/app/globals.css)) via `@tailwindcss/postcss` — there is no `tailwind.config.ts`. |
 | Charts | Recharts | User-chosen |
 | TS types | Hand-rolled in `src/types/api.ts` mirroring `services/api/schemas.py` | OpenAPI codegen is a future nicety |
 | Auth | None — localhost only | User-chosen |
