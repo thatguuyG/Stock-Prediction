@@ -35,3 +35,5 @@ dist/
 
 .claude/worktrees
 .claude/settings.local.json
+# Local cron logs
+logs/

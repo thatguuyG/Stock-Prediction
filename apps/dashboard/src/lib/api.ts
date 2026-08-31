@@ -1,6 +1,9 @@
 import type { EquityPoint, Order, Position, Signal } from '@/types/api';
 
-const BASE = '/api';
+const BASE =
+  typeof window === 'undefined'
+    ? `http://${process.env.API_HOST ?? '127.0.0.1'}:${process.env.API_PORT ?? '8000'}`
+    : '/api';
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { cache: 'no-store' });

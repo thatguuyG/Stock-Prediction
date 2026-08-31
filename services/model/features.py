@@ -147,12 +147,17 @@ def _add_price_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_feature_matrix(
-    session: Session, since: dt.date | None = None
+    session: Session, since: dt.date | None = None, require_target: bool = True
 ) -> pd.DataFrame:
     """Construct the (symbol, ts, features..., target) matrix.
 
-    Drops rows with any NaN in feature columns or a missing target (last row
-    per symbol). Caller is responsible for downstream train/test splitting.
+    Drops rows with any NaN in feature columns. With ``require_target=True``
+    (training) rows lacking a target — the newest bar per symbol, whose next
+    close does not exist yet — are dropped too.
+
+    Inference passes ``require_target=False``: scoring the newest bar is the
+    whole point of a live signal, and its target is unknowable by definition.
+    Those rows carry ``target = pd.NA``.
     """
     prices = _load_prices(session, since)
     if prices.empty:
@@ -168,6 +173,10 @@ def build_feature_matrix(
 
     cols = ["symbol", "ts", "target"] + FEATURE_COLUMNS
     out = merged[cols]
-    out = out.dropna(subset=FEATURE_COLUMNS + ["target"]).reset_index(drop=True)
-    out["target"] = out["target"].astype(int)
+    subset = FEATURE_COLUMNS + ["target"] if require_target else FEATURE_COLUMNS
+    out = out.dropna(subset=subset).reset_index(drop=True)
+    if require_target:
+        out["target"] = out["target"].astype(int)
+    else:
+        out["target"] = out["target"].astype("Int64")
     return out

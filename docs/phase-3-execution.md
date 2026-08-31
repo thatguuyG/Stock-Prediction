@@ -25,14 +25,32 @@ stockpred reconcile                                          # cron entry; syncs
 stockpred report       [--limit 50]                         # terminal summary
 ```
 
-Recommended cron:
+Recommended cron — use the wrapper scripts, not bare CLI calls, so cron's minimal
+environment (no PATH, no virtualenv, no working directory) doesn't sink the run:
 
+```cron
+CRON_TZ=America/New_York
+
+# Nightly pipeline — 30 min after the 16:00 close, once the daily bar is final
+30 16 * * 1-5  /path/to/Stock-Prediction/scripts/daily.sh
+
+# Reconcile — after the open, midday, after close
+45 9  * * 1-5  /path/to/Stock-Prediction/scripts/reconcile.sh
+0  13 * * 1-5  /path/to/Stock-Prediction/scripts/reconcile.sh
+10 16 * * 1-5  /path/to/Stock-Prediction/scripts/reconcile.sh
 ```
-# weekday market close + 30 min (16:30 ET → 21:30 UTC)
-30 21 * * 1-5  stockpred run-signals --model-version v1
-# every 5 min during US market hours
-*/5 14-21 * * 1-5  stockpred reconcile
-```
+
+Pin the crontab to `CRON_TZ=America/New_York` rather than a fixed UTC offset —
+US market hours shift with American DST, so a hardcoded UTC schedule silently
+drifts an hour twice a year.
+
+**`run-signals` must be preceded by `stockpred predict`** in the same run.
+`train` only writes walk-forward *validation* predictions, which stop at the last
+completed fold; without a fresh inference pass the runner finds no
+`(symbol, ts)` overlap with the current feature row and emits zero signals.
+[scripts/daily.sh](../scripts/daily.sh) sequences this correctly.
+
+Full operator guide: [operations.md](operations.md).
 
 ## Getting Alpaca paper-trading keys
 
@@ -123,6 +141,16 @@ The rationale dict logged to `signals.rationale` records every gate's value and 
 3. Submit bracket order to Alpaca (`order_class=bracket`, market entry, 2% stop, 4% take).
 4. Store `broker_order_id` + Alpaca's returned status. If Alpaca rejects: `status="rejected"`, error logged.
 5. If `alpaca=None` (CLI `--dry-run` or no API keys): mark `status="dry_run"` and skip submission. **No orders ever silently ship without keys.**
+
+### Execution timing
+
+Signals are generated after the close, so a market order submitted at 16:30 ET
+is queued and **fills at the next session's open**, not at the close price the
+rules were evaluated against. The model's target is close-to-close
+(`close[t+1] > close[t]`), so the overnight gap is missed before entry. Expect
+live results to trail the backtest for this reason alone — it is a property of
+daily-bar execution, not a defect. See
+[operations.md](operations.md#4-before-you-trust-it-with-anything).
 
 ## Reconciliation
 
